@@ -16,5 +16,10 @@ class WooStore extends Model
         'version',
         'last_synced_at',
     ];
+
+    protected $casts = [
+        'last_synced_at' => 'datetime',
+        'wp_api' => 'boolean',
+    ];
 }
 

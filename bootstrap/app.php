@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Register webhook logging middleware
         $middleware->alias([
             'log.webhook' => \App\Http\Middleware\LogWebhookRequests::class,
+            'admin' => \App\Http\Middleware\AdminMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -112,7 +112,7 @@ class WebhookController extends Controller
                             if (isset($messaging['message'])) {
                                 $senderId = $messaging['sender']['id'];
                                 $pageId = $messaging['recipient']['id'];
-                                $messageText = $messaging['message']['text'] ?? '';
+                                $messageData = $messaging['message'];
                                 
                                 // Get Facebook page from database
                                 $facebookPage = \App\Models\FacebookPage::where('page_id', $pageId)
@@ -126,61 +126,28 @@ class WebhookController extends Controller
                                 
                                 $pageAccessToken = $facebookPage->access_token;
                                 
-                                // Get ChatGPT configuration from environment
-                                $chatgptConfig = [
-                                    'api_key' => config('services.openai.api_key'),
-                                    'model' => config('services.openai.model'),
-                                    'max_tokens' => config('services.openai.max_tokens'),
-                                ];
-                                
-                                if (!$chatgptConfig['api_key']) {
-                                    \Log::error('ChatGPT API key not configured');
+                                // Check if OpenAI API key is configured
+                                if (!config('services.openai.api_key')) {
+                                    \Log::error('OpenAI API key not configured');
                                     return response('OK', 200);
                                 }
                                 
-                                // Initialize services
-                                $facebookService = new \App\Services\FacebookService();
-                                $chatgptService = new \App\Services\ChatGPTService();
+                                // Dispatch job to process message (handles both text and images)
+                                \App\Jobs\ProcessMessengerMessage::dispatch(
+                                    $senderId,
+                                    $pageId,
+                                    $messageData,
+                                    $pageAccessToken,
+                                    $facebookPage->id,
+                                    $facebookPage->user_id
+                                );
                                 
-                                // Set ChatGPT configuration
-                                $chatgptService->setConfig($chatgptConfig);
-                                
-                                // Send typing indicator
-                                $facebookService->sendTypingIndicator($senderId, $pageAccessToken);
-                                
-                                // Store incoming message
-                                \App\Models\Message::create([
-                                    'user_id' => $facebookPage->user_id,
-                                    'facebook_page_id' => $facebookPage->id,
+                                \Log::info('Message processing job dispatched', [
                                     'sender_id' => $senderId,
-                                    'recipient_id' => $pageId,
-                                    'message_text' => $messageText,
-                                    'direction' => 'incoming',
+                                    'page_id' => $pageId,
+                                    'has_text' => isset($messageData['text']),
+                                    'has_attachments' => isset($messageData['attachments'])
                                 ]);
-                                
-                                // Get AI response
-                                $aiResponseData = $chatgptService->sendMessage($messageText);
-                                
-                                if ($aiResponseData && isset($aiResponseData['success']) && $aiResponseData['success']) {
-                                    $aiResponse = $aiResponseData['message'];
-                                    
-                                    // Send response back to Facebook
-                                    $facebookService->sendMessage($senderId, $aiResponse, $pageAccessToken);
-                                    
-                                    // Store outgoing message
-                                    \App\Models\Message::create([
-                                        'user_id' => $facebookPage->user_id,
-                                        'facebook_page_id' => $facebookPage->id,
-                                        'sender_id' => $pageId,
-                                        'recipient_id' => $senderId,
-                                        'message_text' => $aiResponse,
-                                        'direction' => 'outgoing',
-                                        'responded_by_ai' => true,
-                                        'ai_response' => $aiResponse,
-                                    ]);
-                                } else {
-                                    \Log::error('ChatGPT response failed', ['response' => $aiResponseData]);
-                                }
                             }
                         }
                     }

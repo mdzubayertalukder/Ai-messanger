@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\WooStore;
 use App\Models\FacebookPage;
+use App\Jobs\SyncWooProducts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -36,7 +37,7 @@ class IntegrationsController extends Controller
             'version' => 'string|in:wc/v1,wc/v2,wc/v3',
         ]);
 
-        WooStore::create([
+        $store = WooStore::create([
             'user_id' => Auth::id(),
             'store_name' => $request->store_name,
             'store_url' => rtrim($request->store_url, '/'),
@@ -46,8 +47,11 @@ class IntegrationsController extends Controller
             'version' => $request->version ?? 'wc/v3',
         ]);
 
+        // Automatically sync products for the new store
+        SyncWooProducts::dispatch($store);
+
         return redirect()->route('integrations.index')
-            ->with('success', 'WooCommerce store connected successfully!');
+            ->with('success', 'WooCommerce store connected successfully! Products are being synced in the background.');
     }
 
     /**

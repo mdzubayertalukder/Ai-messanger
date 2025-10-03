@@ -48,30 +48,30 @@ class SyncWooProducts implements ShouldQueue
                 $product = Product::updateOrCreate(
                     [
                         'woo_store_id' => $store->id,
-                        'external_id' => (string)($p->id ?? $p['id'] ?? ''),
+                        'external_id' => (string)($p->id ?? ''),
                     ],
                     [
                         'user_id' => $store->user_id,
-                        'name' => $p->name ?? $p['name'] ?? '',
-                        'description' => $p->description ?? $p['description'] ?? null,
-                        'sku' => $p->sku ?? $p['sku'] ?? null,
-                        'price' => (float)($p->price ?? $p['price'] ?? 0),
-                        'stock_quantity' => isset($p->stock_quantity) ? (int)$p->stock_quantity : (isset($p['stock_quantity']) ? (int)$p['stock_quantity'] : null),
-                        'in_stock' => (bool)($p->in_stock ?? $p['in_stock'] ?? true),
-                        'status' => $p->status ?? $p['status'] ?? null,
-                        'permalink' => $p->permalink ?? $p['permalink'] ?? null,
+                        'name' => $p->name ?? '',
+                        'description' => $p->description ?? null,
+                        'sku' => $p->sku ?? null,
+                        'price' => (float)($p->price ?? 0),
+                        'stock_quantity' => isset($p->stock_quantity) ? (int)$p->stock_quantity : null,
+                        'in_stock' => (bool)($p->in_stock ?? true),
+                        'status' => $p->status ?? null,
+                        'permalink' => $p->permalink ?? null,
                         'raw' => json_decode(json_encode($p), true),
                     ]
                 );
 
                 // Images
-                if (!empty($p->images ?? $p['images'] ?? [])) {
-                    $images = $p->images ?? $p['images'];
+                if (!empty($p->images ?? [])) {
+                    $images = $p->images ?? [];
                     foreach ($images as $position => $img) {
                         ProductImage::updateOrCreate(
                             [
                                 'product_id' => $product->id,
-                                'src' => $img->src ?? $img['src'] ?? '',
+                                'src' => $img->src ?? '',
                             ],
                             [
                                 'position' => $position,
@@ -81,20 +81,20 @@ class SyncWooProducts implements ShouldQueue
                 }
 
                 // Variants
-                if (!empty($p->variations ?? $p['variations'] ?? [])) {
-                    $variants = is_array($p->variations ?? null) ? ($p->variations) : [];
+                if (!empty($p->variations ?? [])) {
+                    $variants = $p->variations ?? [];
                     foreach ($variants as $v) {
                         ProductVariant::updateOrCreate(
                             [
                                 'product_id' => $product->id,
-                                'external_id' => (string)($v->id ?? $v['id'] ?? ''),
+                                'external_id' => (string)($v->id ?? ''),
                             ],
                             [
-                                'sku' => $v->sku ?? $v['sku'] ?? null,
-                                'attributes' => json_decode(json_encode($v->attributes ?? $v['attributes'] ?? []), true),
-                                'price' => (float)($v->price ?? $v['price'] ?? 0),
-                                'stock_quantity' => isset($v->stock_quantity) ? (int)$v->stock_quantity : (isset($v['stock_quantity']) ? (int)$v['stock_quantity'] : null),
-                                'in_stock' => (bool)($v->in_stock ?? $v['in_stock'] ?? true),
+                                'sku' => $v->sku ?? null,
+                                'attributes' => json_decode(json_encode($v->attributes ?? []), true),
+                                'price' => (float)($v->price ?? 0),
+                                'stock_quantity' => isset($v->stock_quantity) ? (int)$v->stock_quantity : null,
+                                'in_stock' => (bool)($v->in_stock ?? true),
                             ]
                         );
                     }

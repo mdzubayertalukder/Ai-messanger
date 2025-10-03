@@ -1,71 +1,118 @@
 <?php
 
-require_once 'vendor/autoload.php';
+require_once __DIR__ . '/vendor/autoload.php';
 
-$app = require_once 'bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-
+use App\Jobs\ProcessMessengerMessage;
 use App\Models\Message;
 use App\Models\FacebookPage;
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\DB;
 
-echo "=== FACEBOOK INTEGRATION TEST ===" . PHP_EOL;
-echo PHP_EOL;
+// Bootstrap Laravel
+$app = require_once __DIR__ . '/bootstrap/app.php';
+$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
 
-// 1. Check Facebook Page Configuration
-echo "1. Checking Facebook Page Configuration..." . PHP_EOL;
-$facebookPage = FacebookPage::first();
-if ($facebookPage) {
-    echo "✅ Facebook Page Found:" . PHP_EOL;
-    echo "   - Page ID: {$facebookPage->page_id}" . PHP_EOL;
-    echo "   - Page Name: {$facebookPage->page_name}" . PHP_EOL;
-    echo "   - Access Token: " . substr($facebookPage->access_token, 0, 20) . "..." . PHP_EOL;
-    echo "   - User ID: {$facebookPage->user_id}" . PHP_EOL;
-} else {
-    echo "❌ No Facebook page found!" . PHP_EOL;
-    exit(1);
-}
-echo PHP_EOL;
+echo "=== COMPLETE MESSENGER FLOW TEST ===\n";
 
-// 2. Check Recent Messages
-echo "2. Checking Recent Messages in Database..." . PHP_EOL;
-$totalMessages = Message::count();
-echo "   - Total Messages: {$totalMessages}" . PHP_EOL;
-
-$recentMessages = Message::latest()->take(3)->get(['id', 'sender_id', 'recipient_id', 'direction', 'message_text', 'created_at']);
-echo "   - Recent Messages:" . PHP_EOL;
-foreach ($recentMessages as $msg) {
-    $text = substr($msg->message_text, 0, 30) . "...";
-    echo "     * ID {$msg->id}: {$msg->direction} - {$text} ({$msg->created_at})" . PHP_EOL;
-}
-echo PHP_EOL;
-
-// 3. Check Incoming vs Outgoing Messages
-echo "3. Message Statistics..." . PHP_EOL;
-$incomingCount = Message::where('direction', 'incoming')->count();
-$outgoingCount = Message::where('direction', 'outgoing')->count();
-echo "   - Incoming Messages: {$incomingCount}" . PHP_EOL;
-echo "   - Outgoing Messages: {$outgoingCount}" . PHP_EOL;
-echo "   - AI Response Rate: " . ($incomingCount > 0 ? round(($outgoingCount / $incomingCount) * 100, 1) : 0) . "%" . PHP_EOL;
-echo PHP_EOL;
-
-// 4. Check Latest Conversation
-echo "4. Latest Conversation..." . PHP_EOL;
-$latestConversation = Message::latest()->take(4)->get(['sender_id', 'recipient_id', 'direction', 'message_text', 'created_at']);
-foreach ($latestConversation->reverse() as $msg) {
-    $time = $msg->created_at->format('H:i:s');
-    $text = substr($msg->message_text, 0, 50);
-    if ($msg->direction === 'incoming') {
-        echo "   👤 User ({$msg->sender_id}): {$text}... [{$time}]" . PHP_EOL;
+try {
+    // Get or create a test Facebook page
+    $facebookPage = FacebookPage::first();
+    if (!$facebookPage) {
+        echo "No Facebook page found. Creating test page...\n";
+        $facebookPage = FacebookPage::create([
+            'user_id' => 1,
+            'page_id' => 'test_page_123',
+            'page_name' => 'Test Store',
+            'page_access_token' => 'EAABwzLixnjYBO123456789',  // Mock token for testing
+            'is_active' => true
+        ]);
     } else {
-        echo "   🤖 AI Bot: {$text}... [{$time}]" . PHP_EOL;
+        // Update existing page with mock token for testing
+        $facebookPage->update(['page_access_token' => 'EAABwzLixnjYBO123456789']);
     }
-}
-echo PHP_EOL;
 
-echo "=== TEST COMPLETE ===" . PHP_EOL;
-echo "✅ Your Facebook webhook is working perfectly!" . PHP_EOL;
-echo "✅ Messages are being stored in database correctly!" . PHP_EOL;
-echo "✅ AI responses are being generated and sent!" . PHP_EOL;
-echo PHP_EOL;
-echo "🔗 Your webhook URL: https://beab81abebcd.ngrok-free.app/webhook/facebook" . PHP_EOL;
-echo "📱 Ready to receive real Facebook messages!" . PHP_EOL;
+    echo "Using Facebook Page: {$facebookPage->page_name} (ID: {$facebookPage->id})\n\n";
+
+    // Test different message scenarios
+    $testMessages = [
+        [
+            'text' => 'Do you have mesh flower earrings?',
+            'description' => 'Product search query'
+        ],
+        [
+            'text' => 'Show me crystal earrings',
+            'description' => 'Another product search'
+        ],
+        [
+            'text' => 'What is your return policy?',
+            'description' => 'General customer service question'
+        ]
+    ];
+
+    foreach ($testMessages as $index => $testMessage) {
+        echo "--- Test " . ($index + 1) . ": {$testMessage['description']} ---\n";
+        echo "Message: \"{$testMessage['text']}\"\n";
+
+        // Simulate messenger webhook data
+        $messageData = [
+            'sender' => ['id' => 'test_user_' . ($index + 1)],
+            'recipient' => ['id' => $facebookPage->page_id],
+            'timestamp' => time() * 1000,
+            'text' => $testMessage['text'],  // Text should be at the root level
+            'mid' => 'test_mid_' . ($index + 1)
+        ];
+
+        // Store incoming message
+        $incomingMessage = Message::create([
+            'user_id' => $facebookPage->user_id,
+            'facebook_page_id' => $facebookPage->id,
+            'sender_id' => $messageData['sender']['id'],
+            'recipient_id' => $messageData['recipient']['id'],
+            'message_text' => $testMessage['text'],
+            'direction' => 'incoming',
+            'responded_by_ai' => false,
+        ]);
+
+        echo "Incoming message stored (ID: {$incomingMessage->id})\n";
+
+        // Process the message (simulate the job)
+        echo "Processing message...\n";
+        
+        $job = new ProcessMessengerMessage(
+            $messageData['sender']['id'],
+            $facebookPage->page_id,
+            $messageData,
+            $facebookPage->page_access_token,
+            $facebookPage->id,
+            $facebookPage->user_id
+        );
+
+        // Execute the job directly (instead of dispatching to queue)
+        $job->handle();
+
+        // Check for outgoing messages
+        $outgoingMessages = Message::where('sender_id', $facebookPage->page_id)
+            ->where('recipient_id', $messageData['sender']['id'])
+            ->where('direction', 'outgoing')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if ($outgoingMessages) {
+            echo "✅ Response generated!\n";
+            echo "Response: " . substr($outgoingMessages->message_text, 0, 200) . "...\n";
+            echo "AI Response Type: " . ($outgoingMessages->ai_response ?? 'N/A') . "\n";
+        } else {
+            echo "❌ No response generated\n";
+        }
+
+        echo "\n";
+    }
+
+    echo "=== TEST COMPLETED ===\n";
+    echo "Check the messages table for full details.\n";
+
+} catch (\Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+    echo "File: " . $e->getFile() . " Line: " . $e->getLine() . "\n";
+    echo "Trace: " . $e->getTraceAsString() . "\n";
+}
